@@ -1,8 +1,8 @@
-# Graphy v1
+# GraphRAG
 
 ![Graphy Logo](./logo.png)
 
-Graphy v1 is a real-time GraphRAG (Graph Retrieval-Augmented Generation) application that leverages the power of [LangChain](https://python.langchain.com/), [Neo4j](https://neo4j.com/), and OpenAI's GPT models to extract knowledge from documents and enable natural language querying over a graph database.
+Graphy RAG is a real-time GraphRAG (Graph Retrieval-Augmented Generation) application that leverages the power of [LangChain](https://python.langchain.com/), [Neo4j](https://neo4j.com/), and OpenAI's GPT models to extract knowledge from documents and enable natural language querying over a graph database.
 
 ![App Screenshot](./sct.png)
 
@@ -21,7 +21,7 @@ Graphy v1 is a real-time GraphRAG (Graph Retrieval-Augmented Generation) applica
 
 ## Overview
 
-Graphy v1 allows users to upload a PDF document, which is then processed to extract entities and relationships using OpenAI's GPT models (e.g., `gpt-4o` and `text-ada-002`). The extracted information is stored in a Neo4j graph database. Users can then interact with the graph in real-time by asking natural language questions, which are converted into Cypher queries to retrieve answers from the graph.
+Graph RAG allows users to upload a PDF document, which is then processed to extract entities and relationships using OpenAI's GPT models (e.g., `gpt-4o` and `text-ada-002`). The extracted information is stored in a Neo4j graph database. Users can then interact with the graph in real-time by asking natural language questions, which are converted into Cypher queries to retrieve answers from the graph.
 
 ## Features
 
@@ -114,16 +114,13 @@ To contribute:
 3. Commit your changes with clear commit messages.
 4. Open a pull request describing your changes.
 
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.
 
 ## Contact
 
 For questions or inquiries, please contact the developer:
 
-- **Email**: [aianytime07@gmail.com](mailto:aianytime07@gmail.com)
+- **Email**: [davidtadediji@gmail.com](mailto:aianytime07@gmail.com)
 
 ---
 
-*Disclaimer: This project is for educational purposes. Please ensure compliance with all applicable laws and regulations when using OpenAI's API and handling data.*
+*Disclaimer: Please ensure compliance with all applicable laws and regulations when using OpenAI's API and handling data.*
