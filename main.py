@@ -1,18 +1,21 @@
 import os
 from dotenv import load_dotenv
-from langchain.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
 from langchain.prompts import PromptTemplate
-from langchain.vectorstores import Neo4jVector
-from langchain.chat_models import ChatOpenAI
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.graphs import Neo4jGraph
+from langchain_community.vectorstores import Neo4jVector
+from langchain_openai import ChatOpenAI
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.graphs import Neo4jGraph
 from langchain_experimental.graph_transformers import LLMGraphTransformer
-from langchain.chains.graph_qa.cypher import GraphCypherQAChain
+from langchain_community.chains.graph_qa.cypher import GraphCypherQAChain
 import streamlit as st
 import tempfile
-from neo4j import GraphDatabase
+
+# Load environment variables from .env file
+load_dotenv()
+
 
 def main():
     st.set_page_config(
@@ -20,58 +23,59 @@ def main():
         page_title="Graphy v1",
         page_icon=":graph:"
     )
-    st.sidebar.image('logo.png', use_column_width=True) 
+    st.sidebar.image('logo.png', use_column_width=True)
     with st.sidebar.expander("Expand Me"):
         st.markdown("""
-    This application allows you to upload a PDF file, extract its content into a Neo4j graph database, and perform queries using natural language.
-    It leverages LangChain and OpenAI's GPT models to generate Cypher queries that interact with the Neo4j database in real-time.
-    """)
+            This application allows you to upload a PDF file, extract its content into a Neo4j graph database, and perform queries using natural language.
+            It leverages LangChain and OpenAI's GPT models to generate Cypher queries that interact with the Neo4j database in real-time.
+        """)
     st.title("Graphy: Realtime GraphRAG App")
 
-    load_dotenv()
-
-    # Set OpenAI API key
+    # Set OpenAI API key from environment variable or user input
+    openai_api_key = os.getenv('OPENAI_API_KEY')
     if 'OPENAI_API_KEY' not in st.session_state:
         st.sidebar.subheader("OpenAI API Key")
-        openai_api_key = st.sidebar.text_input("Enter your OpenAI API Key:", type='password')
         if openai_api_key:
-            os.environ['OPENAI_API_KEY'] = openai_api_key
-            st.session_state['OPENAI_API_KEY'] = openai_api_key
-            st.sidebar.success("OpenAI API Key set successfully.")
-            embeddings = OpenAIEmbeddings()
-            llm = ChatOpenAI(model_name="gpt-4o")  # Use model that supports function calling
-            st.session_state['embeddings'] = embeddings
-            st.session_state['llm'] = llm
-    else:
-        embeddings = st.session_state['embeddings']
-        llm = st.session_state['llm']
+            st.sidebar.success("OpenAI API Key loaded from environment.")
+        else:
+            openai_api_key = st.sidebar.text_input("Enter your OpenAI API Key:", type='password')
+            if openai_api_key:
+                os.environ['OPENAI_API_KEY'] = openai_api_key
+                st.session_state['OPENAI_API_KEY'] = openai_api_key
+                st.sidebar.success("OpenAI API Key set successfully.")
+
+    embeddings = OpenAIEmbeddings()
+    llm = ChatOpenAI(model_name="gpt-4o-mini")  # Use model that supports function calling
+    st.session_state['embeddings'] = embeddings
+    st.session_state['llm'] = llm
 
     # Initialize variables
-    neo4j_url = None
-    neo4j_username = None
-    neo4j_password = None
+    neo4j_url = os.getenv('NEO4J_URI')
+    neo4j_username = os.getenv('NEO4J_USERNAME')
+    neo4j_password = os.getenv('NEO4J_PASSWORD')
     graph = None
 
     # Set Neo4j connection details
     if 'neo4j_connected' not in st.session_state:
         st.sidebar.subheader("Connect to Neo4j Database")
-        neo4j_url = st.sidebar.text_input("Neo4j URL:", value="neo4j+s://<your-neo4j-url>")
-        neo4j_username = st.sidebar.text_input("Neo4j Username:", value="neo4j")
-        neo4j_password = st.sidebar.text_input("Neo4j Password:", type='password')
+        neo4j_url_input = st.sidebar.text_input("Neo4j URL:", value=neo4j_url or "neo4j+s://<your-neo4j-url>")
+        neo4j_username_input = st.sidebar.text_input("Neo4j Username:", value=neo4j_username or "neo4j")
+        neo4j_password_input = st.sidebar.text_input("Neo4j Password:", value=neo4j_password, type='password')
         connect_button = st.sidebar.button("Connect")
-        if connect_button and neo4j_password:
+
+        if connect_button and neo4j_password_input:
             try:
                 graph = Neo4jGraph(
-                    url=neo4j_url, 
-                    username=neo4j_username, 
-                    password=neo4j_password
+                    url=neo4j_url_input,
+                    username=neo4j_username_input,
+                    password=neo4j_password_input
                 )
                 st.session_state['graph'] = graph
                 st.session_state['neo4j_connected'] = True
                 # Store connection parameters for later use
-                st.session_state['neo4j_url'] = neo4j_url
-                st.session_state['neo4j_username'] = neo4j_username
-                st.session_state['neo4j_password'] = neo4j_password
+                st.session_state['neo4j_url'] = neo4j_url_input
+                st.session_state['neo4j_username'] = neo4j_username_input
+                st.session_state['neo4j_password'] = neo4j_password_input
                 st.sidebar.success("Connected to Neo4j database.")
             except Exception as e:
                 st.error(f"Failed to connect to Neo4j: {e}")
@@ -100,30 +104,30 @@ def main():
                 text_splitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=40)
                 docs = text_splitter.split_documents(pages)
 
-                lc_docs = []
-                for doc in docs:
-                    lc_docs.append(Document(page_content=doc.page_content.replace("\n", ""), 
-                    metadata={'source': uploaded_file.name}))
+                lc_docs = [
+                    Document(page_content=doc.page_content.replace("\n", ""), metadata={'source': uploaded_file.name})
+                    for doc in docs]
 
                 # Clear the graph database
                 cypher = """
-                  MATCH (n)
-                  DETACH DELETE n;
+                    MATCH (n)
+                    DETACH DELETE n;
                 """
                 graph.query(cypher)
 
                 # Define allowed nodes and relationships
                 allowed_nodes = ["Patient", "Disease", "Medication", "Test", "Symptom", "Doctor"]
-                allowed_relationships = ["HAS_DISEASE", "TAKES_MEDICATION", "UNDERWENT_TEST", "HAS_SYMPTOM", "TREATED_BY"]
+                allowed_relationships = ["HAS_DISEASE", "TAKES_MEDICATION", "UNDERWENT_TEST", "HAS_SYMPTOM",
+                                         "TREATED_BY"]
 
                 # Transform documents into graph documents
                 transformer = LLMGraphTransformer(
                     llm=llm,
                     allowed_nodes=allowed_nodes,
                     allowed_relationships=allowed_relationships,
-                    node_properties=False, 
+                    node_properties=False,
                     relationship_properties=False
-                ) 
+                )
 
                 graph_documents = transformer.convert_to_graph_documents(lc_docs)
                 graph.add_graph_documents(graph_documents, include_source=True)
@@ -136,11 +140,11 @@ def main():
                     password=neo4j_password,
                     database="neo4j",
                     node_label="Patient",  # Adjust node_label as needed
-                    text_node_properties=["id", "text"], 
-                    embedding_node_property="embedding", 
-                    index_name="vector_index", 
-                    keyword_index_name="entity_index", 
-                    search_type="hybrid" 
+                    text_node_properties=["id", "text"],
+                    embedding_node_property="embedding",
+                    index_name="vector_index",
+                    keyword_index_name="entity_index",
+                    search_type="hybrid"
                 )
 
                 st.success(f"{uploaded_file.name} preparation is complete.")
@@ -150,24 +154,24 @@ def main():
 
                 # Set up the QA chain
                 template = """
-                Task: Generate a Cypher statement to query the graph database.
+                    Task: Generate a Cypher statement to query the graph database.
 
-                Instructions:
-                Use only relationship types and properties provided in schema.
-                Do not use other relationship types or properties that are not provided.
+                    Instructions:
+                    Use only relationship types and properties provided in schema.
+                    Do not use other relationship types or properties that are not provided.
 
-                schema:
-                {schema}
+                    schema:
+                    {schema}
 
-                Note: Do not include explanations or apologies in your answers.
-                Do not answer questions that ask anything other than creating Cypher statements.
-                Do not include any text other than generated Cypher statements.
+                    Note: Do not include explanations or apologies in your answers.
+                    Do not answer questions that ask anything other than creating Cypher statements.
+                    Do not include any text other than generated Cypher statements.
 
-                Question: {question}""" 
+                    Question: {question}"""
 
                 question_prompt = PromptTemplate(
-                    template=template, 
-                    input_variables=["schema", "question"] 
+                    template=template,
+                    input_variables=["schema", "question"]
                 )
 
                 qa = GraphCypherQAChain.from_llm(
@@ -192,8 +196,6 @@ def main():
                 res = st.session_state['qa'].invoke({"query": question})
                 st.write("\n**Answer:**\n" + res['result'])
 
+
 if __name__ == "__main__":
     main()
-
-
-
